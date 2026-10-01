@@ -162,3 +162,28 @@ def test_initialization_is_non_destructive(db):
     sample(app)
     initialize(conn)
     assert len(app.list_rows("products")) == 1
+
+
+def test_cli_lifecycle(db, monkeypatch, capsys):
+    from shop.__main__ import main
+
+    _, app, dsn = db
+    password = secrets.token_urlsafe(24)
+    app.employee_add("cli-sample", password, "admin")
+    monkeypatch.setenv("SHOP_DATABASE_URL", dsn)
+    monkeypatch.setenv("SHOP_USER", "cli-sample")
+    monkeypatch.setenv("SHOP_PASSWORD", password)
+    commands = [
+        ["product-add", "CLI sample", "2500", "5"],
+        ["customer-add", "CLI sample"],
+        ["order", "1", "1:2"],
+        ["list", "orders"],
+        ["cancel", "1"],
+        ["cancel", "1"],
+    ]
+    for command in commands:
+        monkeypatch.setattr("sys.argv", ["shop", *command])
+        assert main() == 0
+    assert app.list_rows("products")[0][3] == 5
+    output = capsys.readouterr().out
+    assert "5000" in output and "Already cancelled" in output and password not in output
